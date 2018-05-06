@@ -18,7 +18,6 @@ int main(int argc, char* argv[]) {
 	// init base structure, where all pipes stored
 	IO io = {0};
 	io.proc_id = 0;
-	io.proc_number = 0;
 
 	int i = get_proc_num(argc, argv);
 	i = i >= 0 ? i : 0;
@@ -30,6 +29,7 @@ int main(int argc, char* argv[]) {
 		perror("create pipes fucked up");
 		return -1;
 	}
+
 
 	// TODO: fork all processes in loop with checking if forked successfully.
 	// If child - then do all child's stuff.

@@ -64,7 +64,7 @@ int get_proc_num (int argc, char* argv[]) {
 	switch (getopt(argc, argv, "p:")) {
 		case 'p': {
 			proc_num = strtol(optarg, NULL, 10);
-			if (optarg == NULL || proc_num < 0)
+			if (optarg == NULL || proc_num < 0 || proc_num > MAX_PROCESS_ID)
 				proc_num = 0;
 			break;
 		}
