@@ -7,6 +7,5 @@ int log_pipe (char* message);
 int do_child (IO io);
 int do_parent (IO io);
 
-int parse_proc_num (int argc, char* argv[]);
-int create_pipes (IO io);
-
+int create_pipes    (IO* io);
+int get_proc_num    (int argc, char* argv[]);

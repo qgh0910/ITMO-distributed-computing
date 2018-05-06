@@ -32,11 +32,11 @@ int send_multicast(void * self, const Message * msg) {
 	IO *io = (IO*)self;
 
 	int send_result = 0;
-	for (local_id i = 0; i < io->proc_number; i++) {
+	for (local_id i = 0; i <= io->proc_number; i++) {
 		send_result = send (self, i, msg);
 		if (send_result < 0) {
 			return -1;
-		} 
+		}
 	}
 
 	return 0;
@@ -59,7 +59,7 @@ int receive(void * self, local_id from, Message * msg) {
 		if (read_result > 0) {							// message received => break from loop;
 			memcpy (msg, received_buff, read_result);
 			break;
-		}	
+		}
 		usleep(10000);		// TODO: check if value '10000' is suitable
 	} while (1);
 
@@ -82,7 +82,7 @@ int receive_any(void * self, Message * msg) {
 			}
 			channel = get_channel_handle(io, from, io->proc_id);
 			if (channel == NULL)
-				return -2;	
+				return -2;
 			read_result = read (channel->fd_read, received_buff, MAX_MESSAGE_LEN);
 			if (read_result > 0) {							// message received => break from loop;
 				memcpy (msg, received_buff, read_result);

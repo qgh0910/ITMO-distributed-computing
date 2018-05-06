@@ -1,6 +1,6 @@
-CC=clang
+CC=clang-3.5
 CFLAGS = -std=c99 -Wall -pedantic -g
-SOURCE=$(wildcard *.c)
+SOURCE=main.c util.c #$(wildcard *.c)
 
 all: pa1
 

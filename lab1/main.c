@@ -11,40 +11,30 @@
 #include "common.h"
 #include "ipc.h"
 #include "pa1.h"
+#include "io.h"
+#include "util.h"
 
 int main(int argc, char* argv[]) {
+	// init base structure, where all pipes stored
+	IO io = {0};
+	io.proc_id = 0;
+	io.proc_number = 0;
 
-	// TODO: parse -p option (see SRS)
+	int i = get_proc_num(argc, argv);
+	i = i >= 0 ? i : 0;
+	io.proc_number = i;
 
 	// TODO: open log files for logging
 
-	if (create_pipes() < 0)
-	    return -1;
+	if (create_pipes(&io) < 0) {
+		perror("create pipes fucked up");
+		return -1;
+	}
 
 	// TODO: fork all processes in loop with checking if forked successfully.
 	// If child - then do all child's stuff.
 
 	    // TODO: wait all other processes
 
-	    // TODO: close all descriptors (e.g. log files)
-}
-
-// the func is used to init all descriptors of pipes.
-// check if it is "useful" to pass arg
-
-
-int create_pipes() {
-
-}
-
-int open_logs() {
-
-}
-
-int close_logs() {
-
-}
-
-int close_descriptors() {
-
+			// TODO: close all descriptors (e.g. log files)
 }
