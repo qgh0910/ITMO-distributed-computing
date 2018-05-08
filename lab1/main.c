@@ -22,16 +22,12 @@ void wait_msg(IO* io) {
 	}
 }
 
+
 void wait_others_messages(IO* io) {
 	wait_msg(io);  // wait for STARTED
-	//TODO: log
+	fprintf(io->events_log_stream, log_received_all_started_fmt, PARENT_ID);
 	wait_msg(io);  // wait for DONE
-	//TODO: log
-}
-
-
-void close_log_files(IO* io) {
-
+	fprintf(io->events_log_stream, log_received_all_done_fmt, PARENT_ID);
 }
 
 
@@ -43,7 +39,7 @@ int main(int argc, char* argv[]) {
 	i = i >= 0 ? i : 0;
 	io.proc_number = i;
 
-	// TODO: open log files for logging
+	open_log_streams (&io);
 
 	if (create_pipes(&io) < 0) {
 		perror("create pipes fucked up");
@@ -64,6 +60,6 @@ int main(int argc, char* argv[]) {
 	}
 	close_non_related_fd(&io, (local_id)PARENT_ID);
 	wait_others_messages(&io);
-	while(wait(NULL) > 0);  // see POSIX
-	// TODO: close logging files
+	while(wait(NULL) > 0);  // waiting end of childs (see POSIX)
+	close_log_streams(&io);
 }

@@ -18,15 +18,27 @@
 int events_log_fd = -1;
 int pipes_log_fd = -1;
 
-int open_log_streams () {
+int open_log_streams (IO* io) {
+	if (io == NULL)
+		return -1;
+
+	io->events_log_stream = fopen(events_log, "w+");
+	if (io->events_log_stream == NULL)
+		return -2;
+
+	io->pipes_log_stream = fopen(pipes_log, "w");
+	if (io->pipes_log_stream == NULL)
+		return -3;
+
 	return 0;
 }
 
-int log_event (char* message) {
-	return 0;
-}
+int close_log_streams (IO* io) {
+	if (io == NULL)
+		return -1;
 
-int log_pipe (char* message) {
+	fclose(io->pipes_log_stream);
+	fclose(io->events_log_stream);
 	return 0;
 }
 
@@ -51,10 +63,13 @@ int create_pipes(IO* io) {
 			} else {
 				io->channels[i * proc_num + j].fd_read = fd[0];
 				io->channels[i * proc_num + j].fd_write = fd[1];
-				printf("from %d to %d: read=%d\t write=%d", i, j, io->channels[i * proc_num + j].fd_read, io->channels[i * proc_num + j].fd_write);
+				fprintf(io->pipes_log_stream,
+					"from %d to %d (fd's id): read=%d write=%d\n",
+					i, j,
+					io->channels[i * proc_num + j].fd_read,
+					io->channels[i * proc_num + j].fd_write);
 			}
 		}
-		printf("\n");
 	}
 	return 0;
 }
@@ -84,20 +99,25 @@ void close_non_related_fd(IO* io, local_id id) {
 			if (i == id) {
 				// from this process we can only write to other
 				close(io->channels[i*num +j].fd_read);
-				// TODO: log
+				fprintf(io->pipes_log_stream, "proc id=%d closed R[%d->%d]\n",
+					id, i, j);
 			}
 			if (j == id) {
 				// from this view our process could be only as destination
 				close(io->channels[i*num+j].fd_write);
-				// TODO: log
+				fprintf(io->pipes_log_stream, "proc id=%d closed W[%d<-%d]\n",
+					id, j, i);
 			}
 			if (!(j == id || i == id)) {
 				close(io->channels[i*num+j].fd_write);
 				close(io->channels[i*num+j].fd_read);
-				// TODO: log
+				fprintf(io->pipes_log_stream, "proc id=%d closed RW[%d<->%d]\n",
+					id, i, j);
 			}
 		}
 	}
+	fprintf(io->pipes_log_stream,
+		"====| PROC %d ENDED UP CLOSE UNRELATED PIPES!\n", id);
 }
 
 
@@ -117,6 +137,7 @@ int child_process(IO* io, local_id proc_id) {
 	timestamp_t t = 0;
 
 	synchronize_with_others(payload_len, type, t, payload, &this_process);
+	fprintf(io->events_log_stream, log_received_all_started_fmt, proc_id);
 	do_child_work();
 
 	// set for msg and sync
@@ -124,6 +145,7 @@ int child_process(IO* io, local_id proc_id) {
 	type = DONE;
 
 	synchronize_with_others(payload_len, type, t, payload, &this_process);
+	fprintf(io->events_log_stream, log_received_all_done_fmt, proc_id);
 	return 0;
 }
 
@@ -145,7 +167,8 @@ int synchronize_with_others(
 	};
 	strncpy(msg.s_payload, payload, payload_len);
 
-	send_multicast((void*)proc, (const Message *)&msg);
+	if (send_multicast((void*)proc, (const Message *)&msg) < 0)
+		printf("SUKA\n");
 	// wait for messages from others
 	// it's kinda "stub" which will prevent you to move on
 	for (size_t i = 1; i <= proc->proc_number; i++)

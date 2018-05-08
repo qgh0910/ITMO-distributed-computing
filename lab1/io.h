@@ -3,6 +3,7 @@
 
 #include <sys/types.h>
 #include "ipc.h"
+#include <stdio.h>
 
 // describes read/write channel
 typedef struct
@@ -17,6 +18,8 @@ typedef struct
 	local_id proc_id;  // this process id
 	size_t proc_number;  // amount of other processes connected with this proc
 	ChannelHandle* channels;
+	FILE* events_log_stream;
+	FILE* pipes_log_stream;
 } IO;
 
 #endif

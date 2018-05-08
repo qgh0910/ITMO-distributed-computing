@@ -1,8 +1,8 @@
 
 #include "io.h"
 
-int log_event (char* message);
-int log_pipe (char* message);
+int open_log_streams (IO* io);
+int close_log_streams (IO* io);
 
 int do_child_work ();
 
