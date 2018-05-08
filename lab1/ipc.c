@@ -1,6 +1,7 @@
+#define _DEFAULT_SOURCE
 #include <unistd.h>
+#include <stdbool.h>
 #include <string.h>
-
 #include "ipc.h"
 #include "io.h"
 
@@ -14,11 +15,11 @@ int send(void * self, local_id dst, const Message * msg) {
 
 	// TODO: check if dest == src. Is it an error?
 
-	ChannelHandle channel = get_channel_handle (io, io->proc_id, dst);
+	ChannelHandle *channel = get_channel_handle (io, io->proc_id, dst);
 	if (channel == NULL)
 		return -2;
 
-	size_t full_msg_size = sizeof (msg->s_header + msg->s_header.s_payload_len);
+	size_t full_msg_size = sizeof msg->s_header + msg->s_header.s_payload_len;
 	int write_result = write (channel->fd_write, msg, full_msg_size);
 	if (write_result != full_msg_size)
 		return -3;
@@ -48,11 +49,11 @@ int receive(void * self, local_id from, Message * msg) {
 	IO *io = (IO*)self;
 
 	// TODO: check if from == to. Is it an error?
-	ChannelHandle channel = get_channel_handle(io, from, io->proc_id);
+	ChannelHandle *channel = get_channel_handle(io, from, io->proc_id);
 	if (channel == NULL)
 		return -2;
 
-	char* received_buff = new char[MAX_MESSAGE_LEN];
+	char received_buff[MAX_MESSAGE_LEN];
 	int read_result = 0;
 	do {
 		read_result = read (channel->fd_read, received_buff, MAX_MESSAGE_LEN);
@@ -71,16 +72,16 @@ int receive_any(void * self, Message * msg) {
 		return -1;
 	IO *io = (IO*)self;
 
-	char* received_buff = new char[MAX_MESSAGE_LEN];
+	char* received_buff [MAX_MESSAGE_LEN];
 	int read_result = 0;
-	ChannelHandle channel = NULL;
+	ChannelHandle *channel = NULL;
 
 	do {
 		for (local_id i = 0; i < io->proc_number; i++) {
 			if (i == io->proc_id) {
 				continue;
 			}
-			channel = get_channel_handle(io, from, io->proc_id);
+			channel = get_channel_handle(io, i, io->proc_id);
 			if (channel == NULL)
 				return -2;
 			read_result = read (channel->fd_read, received_buff, MAX_MESSAGE_LEN);
@@ -103,6 +104,6 @@ ChannelHandle* get_channel_handle (IO* io, local_id src_id, local_id dest_id) {
 	if (src_id < 0 || dest_id < 0 || src_id > proc_number || dest_id > proc_number) {
 		return NULL;
 	} else {
-		return io->channels [src_id * proc_number + dest_id];
+		return &io->channels [src_id * proc_number + dest_id];
 	}
 }
