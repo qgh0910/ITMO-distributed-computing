@@ -1,19 +1,5 @@
-
 #include "io.h"
 
-int open_log_streams (IO* io);
-int close_log_streams (IO* io);
-
-int do_child_work ();
-
-int create_pipes    (IO* io);
-int get_proc_num    (int argc, char* argv[]);
+int get_proc_num(int argc, char* argv[]);
+int create_pipes(IO* io);
 void close_non_related_fd(IO* io, local_id id);
-int child_process(IO* io, local_id proc_id);
-int synchronize_with_others(
-	uint16_t payload_len,
-	MessageType type,
-	timestamp_t local_time,
-	char* payload,
-	IO* proc
-);

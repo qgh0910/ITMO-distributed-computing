@@ -74,7 +74,7 @@ int send(void * self, local_id dst, const Message * msg);
  *
  * Send msg to all other processes including parrent.
  * Should stop on the first error.
- * 
+ *
  * @param self    Any data structure implemented by students to perform I/O
  * @param msg     Message to multicast.
  *
@@ -108,7 +108,7 @@ int receive(void * self, local_id from, Message * msg);
  *
  * @return 0 on success, any non-zero value on error
  */
-    
+
 
 //------------------------------------------------------------------------------
 

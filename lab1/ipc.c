@@ -13,35 +13,22 @@ int send(void * self, local_id dst, const Message * msg) {
 		return -1;
 	IO *io = (IO*)self;
 
-	// TODO: check if dest == src. Is it an error?
-	// if (dst == io->proc_id) {
-	// 	return 0;
-	// }
-
 	ChannelHandle *channel = get_channel_handle (io, io->proc_id, dst);
 	if (channel == NULL) {
-		printf("NULL! %d %d\n", io->proc_id, dst);
 		return -2;
 	}
-	// printf("write id : %d read_id: %d\n", channel->fd_write, channel->fd_read);
 
 	size_t full_msg_size = sizeof msg->s_header + msg->s_header.s_payload_len;
 	int write_result = write (channel->fd_write, msg, full_msg_size);
-	printf("Hello from send! %d res:%d\n" , io->proc_id, write_result);
 	if (write_result != full_msg_size) {
 		fprintf(io->pipes_log_stream, "proc id=%d can't sent to %d! Failed!\n",
 			io->proc_id, dst);
-		// printf("Ok\n");
 		return -3;
-	}
-	else {
-		if (fprintf(io->pipes_log_stream, "proc id=%d sent to %d successfully!\n",
-			io->proc_id, dst) < 0)
-			printf("error!\n");
-		// printf("Ok!\n");
+	} else {
+		fprintf(io->pipes_log_stream, "proc id=%d sent to %d successfully!\n",
+			io->proc_id, dst);
 		return 0;
 	}
-
 }
 
 int send_multicast(void * self, const Message * msg) {
@@ -51,11 +38,7 @@ int send_multicast(void * self, const Message * msg) {
 
 	int send_result = 0;
 	for (local_id i = 0; i <= io->proc_number; i++) {
-		printf("Hello from send_multicast! %d\n" , io->proc_id);
 		send_result = send (self, i, msg);
-		// if (send_result < 0) {
-		// 	return -1;
-		// }
 	}
 
 	return 0;
@@ -66,7 +49,6 @@ int receive(void * self, local_id from, Message * msg) {
 		return -1;
 	IO *io = (IO*)self;
 
-	// TODO: check if from == to. Is it an error?
 	ChannelHandle *channel = get_channel_handle(io, from, io->proc_id);
 	if (channel == NULL)
 		return -2;
@@ -82,7 +64,7 @@ int receive(void * self, local_id from, Message * msg) {
 		usleep(10000);		// TODO: check if value '10000' is suitable
 	} while (1);
 
-	fprintf(io->pipes_log_stream, "proc id=%d received msg from %d !\n",
+	fprintf(io->pipes_log_stream, "proc id=%d received msg from %d.\n",
 		io->proc_id, from);
 	return 0;
 }
