@@ -14,7 +14,6 @@
 #include "io.h"
 #include "util.h"
 
-
 void wait_msg(IO* io) {
 	Message msg = {{0}};
 	for (size_t i = 1; i <= io->proc_number; i++) {
@@ -47,6 +46,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	for (size_t i = 1; i <= io.proc_number; i++) {
+		fflush(io.events_log_stream);
+		fflush(io.pipes_log_stream);
 		pid_t pid = fork();
 		if (pid < 0)
 			exit(EXIT_FAILURE);
@@ -60,6 +61,7 @@ int main(int argc, char* argv[]) {
 	}
 	close_non_related_fd(&io, (local_id)PARENT_ID);
 	wait_others_messages(&io);
+	printf("AFTER WAITING FROM PARENT(0)\n");
 	while(wait(NULL) > 0);  // waiting end of childs (see POSIX)
 	close_log_streams(&io);
 }

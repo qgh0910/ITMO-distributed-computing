@@ -14,17 +14,34 @@ int send(void * self, local_id dst, const Message * msg) {
 	IO *io = (IO*)self;
 
 	// TODO: check if dest == src. Is it an error?
+	// if (dst == io->proc_id) {
+	// 	return 0;
+	// }
 
 	ChannelHandle *channel = get_channel_handle (io, io->proc_id, dst);
-	if (channel == NULL)
+	if (channel == NULL) {
+		printf("NULL! %d %d\n", io->proc_id, dst);
 		return -2;
+	}
+	// printf("write id : %d read_id: %d\n", channel->fd_write, channel->fd_read);
 
 	size_t full_msg_size = sizeof msg->s_header + msg->s_header.s_payload_len;
 	int write_result = write (channel->fd_write, msg, full_msg_size);
-	if (write_result != full_msg_size)
+	printf("Hello from send! %d res:%d\n" , io->proc_id, write_result);
+	if (write_result != full_msg_size) {
+		fprintf(io->pipes_log_stream, "proc id=%d can't sent to %d! Failed!\n",
+			io->proc_id, dst);
+		// printf("Ok\n");
 		return -3;
-	else
+	}
+	else {
+		if (fprintf(io->pipes_log_stream, "proc id=%d sent to %d successfully!\n",
+			io->proc_id, dst) < 0)
+			printf("error!\n");
+		// printf("Ok!\n");
 		return 0;
+	}
+
 }
 
 int send_multicast(void * self, const Message * msg) {
@@ -34,10 +51,11 @@ int send_multicast(void * self, const Message * msg) {
 
 	int send_result = 0;
 	for (local_id i = 0; i <= io->proc_number; i++) {
+		printf("Hello from send_multicast! %d\n" , io->proc_id);
 		send_result = send (self, i, msg);
-		if (send_result < 0) {
-			return -1;
-		}
+		// if (send_result < 0) {
+		// 	return -1;
+		// }
 	}
 
 	return 0;
@@ -64,6 +82,8 @@ int receive(void * self, local_id from, Message * msg) {
 		usleep(10000);		// TODO: check if value '10000' is suitable
 	} while (1);
 
+	fprintf(io->pipes_log_stream, "proc id=%d received msg from %d !\n",
+		io->proc_id, from);
 	return 0;
 }
 
@@ -100,10 +120,10 @@ int receive_any(void * self, Message * msg) {
 ChannelHandle* get_channel_handle (IO* io, local_id src_id, local_id dest_id) {
 	if (io == NULL)
 		return NULL;
-	int proc_number = io->proc_number;
-	if (src_id < 0 || dest_id < 0 || src_id > proc_number || dest_id > proc_number) {
+	int total_proc_count = io->proc_number+1;
+	if (src_id < 0 || dest_id < 0 || src_id > total_proc_count-1 || dest_id > total_proc_count-1) {
 		return NULL;
 	} else {
-		return &io->channels [src_id * proc_number + dest_id];
+		return &io->channels [src_id * total_proc_count + dest_id];
 	}
 }
