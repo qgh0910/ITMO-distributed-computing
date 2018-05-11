@@ -55,14 +55,10 @@ int receive(void * self, local_id from, Message * msg) {
 
 	char received_buff[MAX_MESSAGE_LEN];
 	int read_result = 0;
-	do {
-		read_result = read (channel->fd_read, received_buff, MAX_MESSAGE_LEN);
-		if (read_result > 0) {							// message received => break from loop;
-			memcpy (msg, received_buff, read_result);
-			break;
-		}
-		usleep(10000);		// TODO: check if value '10000' is suitable
-	} while (1);
+	read_result = read (channel->fd_read, received_buff, MAX_MESSAGE_LEN);
+	if (read_result > 0) {							// message received => break from loop;
+		memcpy (msg, received_buff, read_result);
+	}
 
 	fprintf(io->pipes_log_stream, "proc id=%d received msg from %d.\n",
 		io->proc_id, from);
@@ -78,23 +74,20 @@ int receive_any(void * self, Message * msg) {
 	int read_result = 0;
 	ChannelHandle *channel = NULL;
 
-	do {
-		for (local_id i = 0; i < io->proc_number; i++) {
-			if (i == io->proc_id) {
-				continue;
-			}
-			channel = get_channel_handle(io, i, io->proc_id);
-			if (channel == NULL)
-				return -2;
-			read_result = read (channel->fd_read, received_buff, MAX_MESSAGE_LEN);
-			if (read_result > 0) {							// message received => break from loop;
-				memcpy (msg, received_buff, read_result);
-				return 0;
-			}
+	for (local_id i = 0; i < io->proc_number; i++) {
+		if (i == io->proc_id) {
+			continue;
 		}
-		usleep(10000);
-
-	} while (1);
+		channel = get_channel_handle(io, i, io->proc_id);
+		if (channel == NULL)
+			return -2;
+		read_result = read (channel->fd_read, received_buff, MAX_MESSAGE_LEN);
+		if (read_result > 0) {							// message received => break from loop;
+			memcpy (msg, received_buff, read_result);
+			return 0;
+		}
+	}
+	return 0;
 }
 
 

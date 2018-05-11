@@ -21,7 +21,7 @@ int create_pipes(IO* io) {
 
 			int fd[2];
 			if (pipe(fd) < 0) {
-				perror("create concrete pipe");
+				// perror("create concrete pipe");
 				return -1;
 			} else {
 				io->channels[i * total_proc_count + j].fd_read = fd[0];
