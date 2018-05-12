@@ -52,12 +52,28 @@ int receive(void * self, local_id from, Message * msg) {
 	if (channel == NULL)
 		return -2;
 
+	// init read buffer
 	char received_buff[MAX_MESSAGE_LEN];
-	int read_result = 0;
-	read_result = read (channel->fd_read, received_buff, MAX_MESSAGE_LEN);
-	if (read_result > 0) {							// message received => break from loop;
-		memcpy (msg, received_buff, read_result);
-	}
+	memset(received_buff, '\0', MAX_MESSAGE_LEN);
+
+	int header_read_len = read(	// read header of msg to retrieve payload size
+		channel->fd_read,
+		received_buff,
+		sizeof(MessageHeader)
+	);
+	if ( header_read_len < 0)
+		return -3;
+		MessageHeader* msg_header = (MessageHeader*) received_buff;
+	size_t payload_len = msg_header->s_payload_len;
+
+
+	int paload_read_len = read(				// read payload of msg
+		channel->fd_read,
+		received_buff + header_read_len,  	// we write to single buf
+		payload_len							// size of payload
+	);
+	if (paload_read_len > 0)
+		memcpy (msg, received_buff, paload_read_len + header_read_len);
 
 	fprintf(io->pipes_log_stream, "proc id=%d received msg from %d.\n",
 		io->proc_id, from);
