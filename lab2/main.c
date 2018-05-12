@@ -47,6 +47,9 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 
+	//bank_robbery(parent_data);
+    //print_history(all);
+	
 	for (size_t i = 1; i <= io.proc_number; i++) {
 		// needs to avoid repetition
 		fflush(io.events_log_stream);
