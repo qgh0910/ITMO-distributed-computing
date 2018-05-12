@@ -2,11 +2,10 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <string.h>
+
 #include "ipc.h"
 #include "io.h"
-
-ChannelHandle* get_channel_handle (IO* io, local_id src_id, local_id dest_id);
-
+#include "util.h"
 
 int send(void * self, local_id dst, const Message * msg) {
 	if ((self == NULL) || (msg == NULL))
@@ -88,17 +87,4 @@ int receive_any(void * self, Message * msg) {
 		}
 	}
 	return 0;
-}
-
-
-// get required channel from channels table to perform data transmition from src to dest
-ChannelHandle* get_channel_handle (IO* io, local_id src_id, local_id dest_id) {
-	if (io == NULL)
-		return NULL;
-	int total_proc_count = io->proc_number+1;
-	if (src_id < 0 || dest_id < 0 || src_id > total_proc_count-1 || dest_id > total_proc_count-1) {
-		return NULL;
-	} else {
-		return &io->channels [src_id * total_proc_count + dest_id];
-	}
 }

@@ -82,3 +82,16 @@ void close_non_related_fd(IO* io, local_id id) {
 	fprintf(io->pipes_log_stream,
 		"====| PROC %d ENDED UP CLOSE UNRELATED PIPES!\n", id);
 }
+
+
+// get required channel from channels table to perform data transmition from src to dest
+ChannelHandle* get_channel_handle (IO* io, local_id src_id, local_id dest_id) {
+	if (io == NULL)
+		return NULL;
+	int total_proc_count = io->proc_number+1;
+	if (src_id < 0 || dest_id < 0 || src_id > total_proc_count-1 || dest_id > total_proc_count-1) {
+		return NULL;
+	} else {
+		return &io->channels [src_id * total_proc_count + dest_id];
+	}
+}
