@@ -85,22 +85,12 @@ int receive_any(void * self, Message * msg) {
 		return -1;
 	IO *io = (IO*)self;
 
-	char* received_buff [MAX_MESSAGE_LEN];
-	int read_result = 0;
-	ChannelHandle *channel = NULL;
-
-	for (local_id i = 0; i < io->proc_number; i++) {
-		if (i == io->proc_id) {
+	for (local_id i = 1; i <= io->proc_number; i++) {
+		int ret = receive(self, i, msg);
+		if (ret == 0)
+			return ret;
+		else
 			continue;
-		}
-		channel = get_channel_handle(io, i, io->proc_id);
-		if (channel == NULL)
-			return -2;
-		read_result = read (channel->fd_read, received_buff, MAX_MESSAGE_LEN);
-		if (read_result > 0) {							// message received => break from loop;
-			memcpy (msg, received_buff, read_result);
-			return 0;
-		}
 	}
 	return 0;
 }
