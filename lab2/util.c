@@ -4,6 +4,7 @@
 
 #include "io.h"
 #include "util.h"
+#include "banking.h"
 
 // the func is used to init all descriptors of pipes.
 // check if it is "useful" to pass arg
@@ -21,7 +22,9 @@ int create_pipes(IO* io) {
 
 			int fd[2];
 			if (pipe(fd) < 0) {
-				// perror("create concrete pipe");
+				#ifdef DEBUG
+				perror("create concrete pipe");
+				#endif
 				return -1;
 			} else {
 				io->channels[i * total_proc_count + j].fd_read = fd[0];
@@ -38,8 +41,8 @@ int create_pipes(IO* io) {
 }
 
 
-// parse -p option and return additional proc amount
-int get_proc_num (int argc, char* argv[]) {
+// Returns number of child processes and init_balances in args by pointer
+int get_options (int argc, char* argv[], balance_t* balances) {
 	int proc_num = -1;
 	switch (getopt(argc, argv, "p:")) {
 		case 'p': {
@@ -47,6 +50,24 @@ int get_proc_num (int argc, char* argv[]) {
 			if (optarg == NULL || proc_num < 0 || proc_num > MAX_PROCESS_ID)
 				proc_num = 0;
 			break;
+		}
+	}
+	if (argc == 2) {
+		fprintf(stderr, "Incorrect number of options!\n");
+		exit(-1);
+	}
+	if (argc != proc_num + 3) {
+		fprintf(stderr, "Incorrect number of options! Expected %d, has %d.\n",
+				proc_num + 3, argc);
+		exit(-2);
+	}
+	int start = 3;
+	for (int i = 0; i < proc_num; i++) {
+		char* str = argv[i + start];
+		balances[i + 1] = strtol(str, NULL, 10);
+		if (balances[i+1] < 0 || str == NULL) {
+			fprintf(stderr, "Incorrect balance option! see %d param.\n",
+				    i+start);
 		}
 	}
 	return proc_num;
@@ -94,4 +115,30 @@ ChannelHandle* get_channel_handle (IO* io, local_id src_id, local_id dest_id) {
 	} else {
 		return &io->channels [src_id * total_proc_count + dest_id];
 	}
+}
+
+Message get_empty_ACK() {
+	Message msg = (Message) {
+		.s_header = (MessageHeader) {
+			.s_magic = MESSAGE_MAGIC,
+			.s_payload_len = 0,
+			.s_type = ACK,
+			.s_local_time = get_physical_time()
+		},
+		.s_payload = {(char)NULL}
+	};
+	return msg;
+}
+
+Message get_empty_STOP() {
+	Message msg = (Message) {
+		.s_header = (MessageHeader) {
+			.s_magic = MESSAGE_MAGIC,
+			.s_payload_len = 0,
+			.s_type = STOP,
+			.s_local_time = get_physical_time()
+		},
+		.s_payload = {(char)NULL}
+	};
+	return msg;
 }

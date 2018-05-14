@@ -3,12 +3,13 @@
 #include <string.h>
 
 #include "io.h"
-#include "pa1.h"
-
+#include "pa2345.h"
 #include "process.h"
+#include "banking.h"
+#include "util.h"
 
 // all child process work including sync and useful work
-int child_process(IO* io, local_id proc_id) {
+int child_process(IO* io, local_id proc_id, balance_t init_balance) {
 	// set IO struct for the process
 	IO this_process = {
 		.proc_id = proc_id,
@@ -18,24 +19,59 @@ int child_process(IO* io, local_id proc_id) {
 		.pipes_log_stream = io->pipes_log_stream
 	};
 
+	// init BalanceHistory
+	BalanceHistory balance_history = (BalanceHistory) {
+		.s_id = proc_id,
+		.s_history_len = 1,
+		.s_history = {{0}}
+	};
+	timestamp_t time = get_physical_time();
+	for (timestamp_t i = 0; i <= time; i++) {
+        balance_history.s_history[i] = (BalanceState) {
+            .s_balance = init_balance,
+            .s_time = i,
+            .s_balance_pending_in = 0
+        };
+    }
+    balance_history.s_history_len = time + 1;
+
 	// set for messages and sync
 	char payload[MAX_PAYLOAD_LEN];
-	int payload_len = sprintf(payload, log_started_fmt, proc_id, getpid(), getppid());
+	int payload_len = sprintf(payload, log_started_fmt, get_physical_time(),
+							  proc_id, getpid(), getppid(),
+							  balance_history.s_history[0].s_balance);
 	MessageType type = STARTED;
-	timestamp_t t = 0;
+	timestamp_t t = 0; // used only for synchronization
 
+	// sync STARTED
 	fputs(payload, this_process.events_log_stream);
 	synchronize_with_others(payload_len, type, t, payload, &this_process);
-	fprintf(this_process.events_log_stream, log_received_all_started_fmt, proc_id);
-	do_child_work();
+	fprintf(this_process.events_log_stream, log_received_all_started_fmt,
+			get_physical_time(), proc_id);
 
-	// set for msg and sync
-	payload_len = sprintf(payload, log_done_fmt, proc_id);
+	// DO WORK
+	do_child_work(&this_process, &balance_history);
+
+	// DONE
+	uint8_t last_index = balance_history.s_history_len - 1;
+	payload_len = sprintf(payload, log_done_fmt, get_physical_time(), proc_id,
+		balance_history.s_history[last_index].s_balance);
 	fputs(payload, this_process.events_log_stream);
 	type = DONE;
 
+	// sync DONE
 	synchronize_with_others(payload_len, type, t, payload, &this_process);
-	fprintf(this_process.events_log_stream, log_received_all_done_fmt, proc_id);
+	fprintf(this_process.events_log_stream, log_received_all_done_fmt,
+		get_physical_time(), proc_id);
+
+	// send HISTORY to parent
+	timestamp_t cur_time = get_physical_time();
+	fill_empty_history_entries(&balance_history, cur_time);
+	type = BALANCE_HISTORY;
+	memset(payload, '\0', MAX_MESSAGE_LEN); // just to avoid garbage
+	memcpy(payload, (const void*)&balance_history, sizeof(balance_history));
+	t = 0;
+	synchronize_with_others(sizeof(payload), type, t, payload, &this_process);
 	return 0;
 }
 
@@ -69,4 +105,76 @@ int synchronize_with_others(
 	return 0;
 }
 
-int do_child_work() { return 0;}
+// waiting and process TRANSFER and STOP messages
+int do_child_work(IO* io, BalanceHistory* balance_history)
+{
+	while(1) {
+		Message msg = {{0}};
+		local_id src = receive_any((void*)io, &msg);
+        if (src < 0)
+            continue;
+		switch (msg.s_header.s_type) {
+			case TRANSFER: {
+				TransferOrder* transfer = (TransferOrder*) msg.s_payload;
+				if (src == PARENT_ID) {	//  this == transfer->src => decrease bal
+					update_balance_and_history(balance_history,
+						transfer->s_amount * (-1));
+					send(io, transfer->s_dst, (const Message *)&msg);
+					fprintf(io->events_log_stream, log_transfer_out_fmt,
+                			get_physical_time(), io->proc_id,
+                			transfer->s_amount, transfer->s_dst);
+				}
+				else { //  this == transfer->dst => increase balance
+					fprintf(io->events_log_stream, log_transfer_in_fmt,
+						get_physical_time(), io->proc_id,
+						transfer->s_amount, transfer->s_dst);
+					update_balance_and_history(balance_history,
+						transfer->s_amount);
+					Message empty_ACK = get_empty_ACK();
+					send(io, PARENT_ID, (const Message *)&empty_ACK);
+				}
+				break;
+			}
+			case STOP: { // STOP --> end up receiving messages
+				fprintf(io->pipes_log_stream, "proc %d received STOP msg.\n",
+					io->proc_id);
+				return 0;
+			}
+			default: {
+				char* str = "proc %d received msg with type %d from proc %d.\n";
+				fprintf(io->pipes_log_stream, str,
+					io->proc_id, msg.s_header.s_type, src);
+				break;
+			}
+		}
+	}
+	return 0;
+}
+
+
+// func INCREASES balance on delta (+=) and update history
+int update_balance_and_history(BalanceHistory* balance_history, balance_t delta)
+{
+	timestamp_t cur_time = get_physical_time();
+	fill_empty_history_entries(balance_history, cur_time);
+	balance_history->s_history_len = cur_time + 1;  // update new boundary
+	balance_t cur_balance = balance_history->s_history[cur_time-1].s_balance;
+	balance_history->s_history[cur_time] = (BalanceState) {
+		.s_balance =  cur_balance + delta,
+		.s_time = cur_time,
+		.s_balance_pending_in = 0
+	};
+	return 0;
+}
+
+
+// update empty gaps in timeline history
+int fill_empty_history_entries(BalanceHistory* history, timestamp_t cur_time) {
+	uint8_t last_index = history->s_history_len;
+	BalanceState last_hist_entry = history->s_history[last_index - 1];
+	for (timestamp_t i = last_index + 1; i < cur_time; i++) {
+		history->s_history[i] = last_hist_entry;
+		history->s_history[i].s_time = i;	// obligatory to update time!!!
+	}
+	return 0;
+}

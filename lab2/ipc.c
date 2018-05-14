@@ -80,17 +80,18 @@ int receive(void * self, local_id from, Message * msg) {
 	return 0;
 }
 
+// returns process id from which message came from
 int receive_any(void * self, Message * msg) {
 	if ((self == NULL) || (msg == NULL))
 		return -1;
 	IO *io = (IO*)self;
 
-	for (local_id i = 1; i <= io->proc_number; i++) {
+	for (local_id i = 0; i <= io->proc_number; i++) {
 		int ret = receive(self, i, msg);
 		if (ret == 0)
-			return ret;
+			return i;
 		else
 			continue;
 	}
-	return 0;
+	return -2;
 }

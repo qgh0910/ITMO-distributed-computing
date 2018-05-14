@@ -108,7 +108,7 @@ int receive(void * self, local_id from, Message * msg);
  *
  * @return 0 on success, any non-zero value on error
  */
-
+ int receive_any(void * self, Message * msg);
 
 //------------------------------------------------------------------------------
 
