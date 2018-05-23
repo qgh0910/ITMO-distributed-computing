@@ -18,3 +18,5 @@ int fill_empty_history_entries(BalanceHistory* history, timestamp_t cur_time);
 // func INCREASES balance on delta (+=) and update history
 int update_balance_and_history(BalanceHistory* balance_history,
 	balance_t delta);
+
+int child_before_exit(IO* io, BalanceHistory* history);

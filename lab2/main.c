@@ -47,10 +47,9 @@ int main(int argc, char* argv[]) {
 	};
 
 	open_log_streams (&io);
+	// printf("done open log streams!\n");
 	if (create_pipes(&io) < 0) {
-#ifdef DEBUG
 		perror("create pipes fucked up");
-#endif //DEBUG
 		return -1;
 	}
 
@@ -66,19 +65,21 @@ int main(int argc, char* argv[]) {
 			// as process(!!!) starts we need to close all
 			// non-related file descriptors
 			close_non_related_fd(&io, (local_id)i);
-			int child_ret = child_process(&io, (local_id)i, (balance_t)10);
+			// printf("init_balances[%zu] = %d\n", i, init_balances[i]);
+			int child_ret = child_process(&io, (local_id)i, init_balances[i]);
 			exit(child_ret);  // end up child process
 		}
 	}
-
 	// sync START
 	close_non_related_fd(&io, (local_id)PARENT_ID);
 	wait_messages_from_all(&io, STARTED);
+	// printf("%s\n", "all started - said main");
 	fprintf(io.events_log_stream, log_received_all_started_fmt,
             get_physical_time(), PARENT_ID);
 
 	// do WORK
 	bank_robbery((void*)&io, io.proc_number);
+	// printf("%s\n", "bank robbery done");
 
 	// sync by sending STOP and waiting DONE
 	Message stop_msg = get_empty_STOP();
@@ -99,27 +100,41 @@ int main(int argc, char* argv[]) {
 	close_log_streams(&io);
 }
 
+void _print_history_(BalanceHistory* bh, int proc) {
+	printf("=======================PROC %d=======================\n", proc);
+	int len = bh->s_history_len;
+	for (int i = 0; i < len; i++) {
+		BalanceState bs = bh->s_history[i];
+		printf("(proc %d) time %d : $%d\n", bh->s_id, bs.s_time, bs.s_balance);
+	}
+}
+
 void get_balance_history_from_all(IO* io, AllHistory* all_history) {
 	for (size_t i = 1; i <= io->proc_number; i++) {
 		Message msg = {{0}};
 		while(1) {
 			int res = receive((void*)io, i, &msg);
-			if (res != 0)
+			if (res != 0) {
+				usleep(1000);
 				continue;
+			}
 			if (msg.s_header.s_type != BALANCE_HISTORY) {
 				char* str = "Parent expected BALANCE_HISTORY(5), got %d";
 				fprintf(io->pipes_log_stream, str, msg.s_header.s_type);
+				usleep(1000);
 				continue;
 			}
 			memcpy(&all_history->s_history[i], &msg.s_payload,
 				msg.s_header.s_payload_len);
 			// get last balance
 			BalanceHistory bh = all_history->s_history[i];
+			_print_history_(&bh, i);
 			BalanceState bs = bh.s_history[bh.s_history_len-1];
 			balance_t balance = bs.s_balance;
 
 			fprintf(io->events_log_stream, log_done_fmt,
 				get_physical_time(), (int)i, balance);
+			break;
 		}
 	}
 }

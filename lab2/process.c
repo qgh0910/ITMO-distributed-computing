@@ -51,12 +51,15 @@ int child_process(IO* io, local_id proc_id, balance_t init_balance) {
 
 	// DO WORK
 	do_child_work(&this_process, &balance_history);
+	printf("done child work\n");
 
 	// DONE
 	uint8_t last_index = balance_history.s_history_len - 1;
 	payload_len = sprintf(payload, log_done_fmt, get_physical_time(), proc_id,
 		balance_history.s_history[last_index].s_balance);
 	fputs(payload, this_process.events_log_stream);
+	// fclose(this_process.events_log_stream);
+	// fclose(this_process.pipes_log_stream);
 	type = DONE;
 
 	// sync DONE
@@ -67,12 +70,22 @@ int child_process(IO* io, local_id proc_id, balance_t init_balance) {
 	// send HISTORY to parent
 	timestamp_t cur_time = get_physical_time();
 	fill_empty_history_entries(&balance_history, cur_time);
-	type = BALANCE_HISTORY;
-	memset(payload, '\0', MAX_MESSAGE_LEN); // just to avoid garbage
-	memcpy(payload, (const void*)&balance_history, sizeof(balance_history));
-	t = 0;
-	synchronize_with_others(sizeof(payload), type, t, payload, &this_process);
+	child_before_exit(&this_process, &balance_history);
 	return 0;
+}
+
+
+int child_before_exit(IO* io, BalanceHistory* history) {
+	Message msg;
+	msg.s_header = (MessageHeader) {
+		.s_magic = MESSAGE_MAGIC,
+		.s_payload_len = sizeof *history - (MAX_T + 1 - history->s_history_len) * sizeof *history->s_history,
+		.s_type = BALANCE_HISTORY,
+		.s_local_time = get_physical_time()
+	};
+	memcpy(msg.s_payload, history, msg.s_header.s_payload_len);
+	int res = send(io, PARENT_ID, &msg);
+	return res;
 }
 
 
@@ -108,21 +121,27 @@ int synchronize_with_others(
 // waiting and process TRANSFER and STOP messages
 int do_child_work(IO* io, BalanceHistory* balance_history)
 {
+	printf("doing work (%d)...\n", io->proc_id);
 	while(1) {
 		Message msg = {{0}};
 		local_id src = receive_any((void*)io, &msg);
-        if (src < 0)
-            continue;
+		// printf("--do_child_work(%d): received from %hhd with type: %d \n",
+			// io->proc_id, src, msg.s_header.s_type);
+        if (src < 0) {
+			usleep(1000);
+			continue;
+		}
 		switch (msg.s_header.s_type) {
 			case TRANSFER: {
 				TransferOrder* transfer = (TransferOrder*) msg.s_payload;
 				if (src == PARENT_ID) {	//  this == transfer->src => decrease bal
 					update_balance_and_history(balance_history,
 						transfer->s_amount * (-1));
-					send(io, transfer->s_dst, (const Message *)&msg);
+					send((void*)io, (local_id)transfer->s_dst, (const Message *)&msg);
 					fprintf(io->events_log_stream, log_transfer_out_fmt,
                 			get_physical_time(), io->proc_id,
                 			transfer->s_amount, transfer->s_dst);
+					// printf("--do_child_work() : after update log\n");
 				}
 				else { //  this == transfer->dst => increase balance
 					fprintf(io->events_log_stream, log_transfer_in_fmt,
@@ -131,7 +150,7 @@ int do_child_work(IO* io, BalanceHistory* balance_history)
 					update_balance_and_history(balance_history,
 						transfer->s_amount);
 					Message empty_ACK = get_empty_ACK();
-					send(io, PARENT_ID, (const Message *)&empty_ACK);
+					send((void*)io, PARENT_ID, (const Message *)&empty_ACK);
 				}
 				break;
 			}

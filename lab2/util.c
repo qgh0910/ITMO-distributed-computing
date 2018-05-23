@@ -1,6 +1,7 @@
 #define _GNU_SOURCE  // used for getopt func
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h> // library for fcntl function
 
 #include "io.h"
 #include "util.h"
@@ -22,11 +23,14 @@ int create_pipes(IO* io) {
 
 			int fd[2];
 			if (pipe(fd) < 0) {
-				#ifdef DEBUG
 				perror("create concrete pipe");
-				#endif
 				return -1;
 			} else {
+				// error checking for fcntl
+    			if (fcntl(fd[0], F_SETFL, O_NONBLOCK) < 0) {
+					perror("O_NONBLOCK");
+					return -2;
+				}
 				io->channels[i * total_proc_count + j].fd_read = fd[0];
 				io->channels[i * total_proc_count + j].fd_write = fd[1];
 				fprintf(io->pipes_log_stream,
@@ -62,8 +66,10 @@ int get_options (int argc, char* argv[], balance_t* balances) {
 		exit(-2);
 	}
 	int start = 3;
+	// printf("proc num %d\n", proc_num);
 	for (int i = 0; i < proc_num; i++) {
 		char* str = argv[i + start];
+		// printf("option #%d = %s\n", i + start, str);
 		balances[i + 1] = strtol(str, NULL, 10);
 		if (balances[i+1] < 0 || str == NULL) {
 			fprintf(stderr, "Incorrect balance option! see %d param.\n",
