@@ -16,7 +16,11 @@ int do_child_work(IO* io, BalanceHistory* balance_history);
 // update empty gaps in timeline history
 int fill_empty_history_entries(BalanceHistory* history, timestamp_t cur_time);
 // func INCREASES balance on delta (+=) and update history
-int update_balance_and_history(BalanceHistory* balance_history,
+int update_balance_history(BalanceHistory* balance_history,
 	balance_t delta);
 
-int child_before_exit(IO* io, BalanceHistory* history);
+int send_history_to_parent(IO* io, BalanceHistory* history);
+int do_transfer_from_parent(BalanceHistory* balance_history,
+	TransferOrder* transfer, IO* io, Message msg);
+int do_transfer_from_child(BalanceHistory* balance_history,
+	TransferOrder* transfer, IO* io);

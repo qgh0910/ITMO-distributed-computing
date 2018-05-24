@@ -51,7 +51,6 @@ int child_process(IO* io, local_id proc_id, balance_t init_balance) {
 
 	// DO WORK
 	do_child_work(&this_process, &balance_history);
-	printf("done child work\n");
 
 	// DONE
 	uint8_t last_index = balance_history.s_history_len - 1;
@@ -70,12 +69,12 @@ int child_process(IO* io, local_id proc_id, balance_t init_balance) {
 	// send HISTORY to parent
 	timestamp_t cur_time = get_physical_time();
 	fill_empty_history_entries(&balance_history, cur_time);
-	child_before_exit(&this_process, &balance_history);
+	send_history_to_parent(&this_process, &balance_history);
 	return 0;
 }
 
 
-int child_before_exit(IO* io, BalanceHistory* history) {
+int send_history_to_parent(IO* io, BalanceHistory* history) {
 	Message msg;
 	msg.s_header = (MessageHeader) {
 		.s_magic = MESSAGE_MAGIC,
@@ -107,7 +106,6 @@ int synchronize_with_others(
 	strncpy(msg.s_payload, payload, payload_len);
 
 	send_multicast((void*)proc, (const Message *)&msg);
-
 	// wait for messages from others
 	// it's kinda "stub" which will prevent you to move on
 	for (size_t i = 1; i <= proc->proc_number; i++)
@@ -121,45 +119,30 @@ int synchronize_with_others(
 // waiting and process TRANSFER and STOP messages
 int do_child_work(IO* io, BalanceHistory* balance_history)
 {
-	printf("doing work (%d)...\n", io->proc_id);
 	while(1) {
 		Message msg = {{0}};
 		local_id src = receive_any((void*)io, &msg);
 		// printf("--do_child_work(%d): received from %hhd with type: %d \n",
 			// io->proc_id, src, msg.s_header.s_type);
-        if (src < 0) {
-			usleep(1000);
+        if (src < 0) {  // if no message received
 			continue;
 		}
 		switch (msg.s_header.s_type) {
 			case TRANSFER: {
 				TransferOrder* transfer = (TransferOrder*) msg.s_payload;
-				if (src == PARENT_ID) {	//  this == transfer->src => decrease bal
-					update_balance_and_history(balance_history,
-						transfer->s_amount * (-1));
-					send((void*)io, (local_id)transfer->s_dst, (const Message *)&msg);
-					fprintf(io->events_log_stream, log_transfer_out_fmt,
-                			get_physical_time(), io->proc_id,
-                			transfer->s_amount, transfer->s_dst);
-					// printf("--do_child_work() : after update log\n");
-				}
-				else { //  this == transfer->dst => increase balance
-					fprintf(io->events_log_stream, log_transfer_in_fmt,
-						get_physical_time(), io->proc_id,
-						transfer->s_amount, transfer->s_dst);
-					update_balance_and_history(balance_history,
-						transfer->s_amount);
-					Message empty_ACK = get_empty_ACK();
-					send((void*)io, PARENT_ID, (const Message *)&empty_ACK);
-				}
+				if (src == PARENT_ID)
+					do_transfer_from_parent(balance_history, transfer, io, msg);
+				else
+					do_transfer_from_child(balance_history, transfer, io);
 				break;
 			}
 			case STOP: { // STOP --> end up receiving messages
+				fill_empty_history_entries(balance_history, get_physical_time());
 				fprintf(io->pipes_log_stream, "proc %d received STOP msg.\n",
 					io->proc_id);
 				return 0;
 			}
-			default: {
+			default: { // unspecified message
 				char* str = "proc %d received msg with type %d from proc %d.\n";
 				fprintf(io->pipes_log_stream, str,
 					io->proc_id, msg.s_header.s_type, src);
@@ -170,9 +153,34 @@ int do_child_work(IO* io, BalanceHistory* balance_history)
 	return 0;
 }
 
+int do_transfer_from_parent(BalanceHistory* balance_history,
+	TransferOrder* transfer, IO* io, Message msg)
+{
+	update_balance_history(balance_history,
+		transfer->s_amount * (-1));
+	send((void*)io, (local_id)transfer->s_dst, (const Message *)&msg);
+	fprintf(io->events_log_stream, log_transfer_out_fmt,
+			get_physical_time(), io->proc_id,
+			transfer->s_amount, transfer->s_dst);
+	return 0;
+	// printf("--do_child_work() : after update log\n");
+}
+
+int do_transfer_from_child(BalanceHistory* balance_history,
+	TransferOrder* transfer, IO* io)
+{
+	fprintf(io->events_log_stream, log_transfer_in_fmt,
+		get_physical_time(), io->proc_id,
+		transfer->s_amount, transfer->s_src);
+	update_balance_history(balance_history,
+		transfer->s_amount);
+	Message empty_ACK = get_empty_ACK();
+	send((void*)io, PARENT_ID, (const Message *)&empty_ACK);
+	return 0;
+}
 
 // func INCREASES balance on delta (+=) and update history
-int update_balance_and_history(BalanceHistory* balance_history, balance_t delta)
+int update_balance_history(BalanceHistory* balance_history, balance_t delta)
 {
 	timestamp_t cur_time = get_physical_time();
 	fill_empty_history_entries(balance_history, cur_time);
@@ -191,9 +199,10 @@ int update_balance_and_history(BalanceHistory* balance_history, balance_t delta)
 int fill_empty_history_entries(BalanceHistory* history, timestamp_t cur_time) {
 	uint8_t last_index = history->s_history_len;
 	BalanceState last_hist_entry = history->s_history[last_index - 1];
-	for (timestamp_t i = last_index + 1; i < cur_time; i++) {
+	for (timestamp_t i = last_index; i <= cur_time; i++) {
 		history->s_history[i] = last_hist_entry;
 		history->s_history[i].s_time = i;	// obligatory to update time!!!
 	}
+	history->s_history_len = cur_time + 1;
 	return 0;
 }

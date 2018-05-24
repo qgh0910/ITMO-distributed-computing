@@ -48,20 +48,13 @@ void transfer(void * parent_data, local_id src, local_id dst, balance_t amount)
     // wait for ACK
     Message ret_msg = {{0}};
     while(1) {
-        // printf("%s\n", "in while transfer");
         int res = receive((void*)io, dst, &ret_msg);
         if (res != 0) {
-            usleep(1000);
             continue;
         }
         if (ret_msg.s_header.s_type == 2) {
-            printf("================|ACK!\n");
-            fprintf(stderr, "%d: process 0 received ACK from %d.\n",
-                get_physical_time(), dst);
             break;
         } else {
-            printf("================|type : %d\n", ret_msg.s_header.s_type);
-            printf("================|ELSE\n");
             // do whatever is needed if received message isn't ACK
         }
     }

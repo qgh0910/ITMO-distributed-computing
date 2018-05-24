@@ -11,3 +11,4 @@ size_t get_msg_total_size_from_header ();
 
 Message get_empty_STOP();
 Message get_empty_ACK();
+void _print_history_(BalanceHistory* bh, int proc);

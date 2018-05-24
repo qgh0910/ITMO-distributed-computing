@@ -148,3 +148,11 @@ Message get_empty_STOP() {
 	};
 	return msg;
 }
+
+void _print_history_(BalanceHistory* bh, int proc) {
+	int len = bh->s_history_len;
+	for (int i = 0; i < len; i++) {
+		BalanceState bs = bh->s_history[i];
+		printf("(proc %d) time %d : $%d\n", bh->s_id, bs.s_time, bs.s_balance);
+	}
+}
