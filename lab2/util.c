@@ -27,7 +27,9 @@ int create_pipes(IO* io) {
 				return -1;
 			} else {
 				// error checking for fcntl
-    			if (fcntl(fd[0], F_SETFL, O_NONBLOCK) < 0) {
+				int res = fcntl(fd[0], F_SETFL, O_NONBLOCK);
+				int res2 = fcntl(fd[1], F_SETFL, O_NONBLOCK);
+    			if (res < 0 || res2 < 0) {
 					perror("O_NONBLOCK");
 					return -2;
 				}
