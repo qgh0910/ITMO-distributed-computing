@@ -15,12 +15,13 @@ typedef struct
 // io structure contains list of existing channels
 typedef struct
 {
-	local_id proc_id;  // this process id
-	size_t proc_number;  // amount of other processes connected with this proc
+	local_id proc_id;  			// this process id
+	size_t proc_number;  		// amount of other processes connected with this proc
 	ChannelHandle* channels;
 	FILE* events_log_stream;
 	FILE* pipes_log_stream;
 	local_id completed_proc_counter;
+	int is_mutexl;
 } IO;
 
 #endif

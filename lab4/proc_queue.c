@@ -79,4 +79,6 @@ int clear_queue (QueueNode *queue) {
 
 	queue->head = queue->tail = NULL;
 	free(queue);
+
+	return 0;
 }

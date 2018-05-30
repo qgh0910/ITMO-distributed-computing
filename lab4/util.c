@@ -1,9 +1,12 @@
 #define _GNU_SOURCE  // used for getopt func
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h> // library for fcntl function
+#include <getopt.h>
 
 #include "io.h"
 #include "util.h"
+#include "banking.h"
 
 // the func is used to init all descriptors of pipes.
 // check if it is "useful" to pass arg
@@ -21,9 +24,16 @@ int create_pipes(IO* io) {
 
 			int fd[2];
 			if (pipe(fd) < 0) {
-				// perror("create concrete pipe");
+				perror("create concrete pipe");
 				return -1;
 			} else {
+				// error checking for fcntl
+				int res = fcntl(fd[0], F_SETFL, O_NONBLOCK);
+				int res2 = fcntl(fd[1], F_SETFL, O_NONBLOCK);
+    			if (res < 0 || res2 < 0) {
+					perror("O_NONBLOCK");
+					return -2;
+				}
 				io->channels[i * total_proc_count + j].fd_read = fd[0];
 				io->channels[i * total_proc_count + j].fd_write = fd[1];
 				fprintf(io->pipes_log_stream,
@@ -38,18 +48,35 @@ int create_pipes(IO* io) {
 }
 
 
-// parse -p option and return additional proc amount
-int get_proc_num (int argc, char* argv[]) {
-	int proc_num = -1;
-	switch (getopt(argc, argv, "p:")) {
-		case 'p': {
-			proc_num = strtol(optarg, NULL, 10);
-			if (optarg == NULL || proc_num < 0 || proc_num > MAX_PROCESS_ID)
-				proc_num = 0;
-			break;
+int get_options (int argc, char* argv[], int *is_mutexl) {
+	if (argc < 2)
+		return -1;
+
+	struct option long_options[] = {
+		{"mutexl", no_argument, (int*)is_mutexl, 1},
+		{0, 0, 0, 0}
+	};
+
+	int option = -1;
+	int proc_number = -1;
+	// TODO: check if works with "... < -1"
+	while ((option = getopt_long (argc, argv, "p:", long_options, NULL))!= -1) {
+		switch (option) {
+			case -1:
+				return -1;
+			case 0:
+				break;
+			case 'p':
+				proc_number = strtoul(optarg, NULL, 10);
+				if (proc_number <= 0 || proc_number > MAX_PROCESS_ID)
+					return -1;
+				break;
+			default:
+				break;
 		}
 	}
-	return proc_num;
+
+	return proc_number;	
 }
 
 
@@ -95,3 +122,18 @@ ChannelHandle* get_channel_handle (IO* io, local_id src_id, local_id dest_id) {
 		return &io->channels [src_id * total_proc_count + dest_id];
 	}
 }
+
+Message get_empty_msg() {
+	Message msg = (Message) {
+		.s_header = (MessageHeader) {
+			.s_magic = MESSAGE_MAGIC,
+			.s_payload_len = 0,
+			.s_type = 0,
+			.s_local_time = get_lamport_time()
+		},
+		.s_payload = {(char)NULL}
+	};
+	return msg;
+}
+
+
