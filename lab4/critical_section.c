@@ -5,82 +5,88 @@
 #include "pa2345.h"
 #include "proc_queue.h"
 
-static QueueNode* queue = NULL;
-
 int request_cs(const void * self) {
 	if (self == NULL) return 1;
 
-	increase_time();
-	IO* io = (IO*) self;
-	if (queue == NULL) init_proc_queue(&queue);
+    IO* io = (IO*)self;
+    if (io == NULL) return 2;
+    
+    int last_sender_id;
+    increase_time();
 
-	Message msg = {{0}};	
-	msg.s_header = (MessageHeader) {
-		.s_magic = MESSAGE_MAGIC,
-		.s_type = CS_REQUEST,
-		.s_local_time = get_lamport_time(),
-		.s_payload_len = 0
-	};
+    // send critical section request to all processes
+    Message msg;
+    msg.s_header = (MessageHeader) {
+        .s_magic = MESSAGE_MAGIC,
+        .s_type  = CS_REQUEST,
+        .s_local_time = get_lamport_time(),
+        .s_payload_len = 0
+    };
+    send_multicast((void*)self, &msg);
 
-	enqueue(io->proc_id, get_lamport_time(), queue);
-	int res = send_multicast (io, &msg);
-	if (res != 0) return 2;
+    // insert request to process own lamport queue
+    push_queue (io->proc_queue, io->proc_id, get_lamport_time());
 
-	int repliers_count = io->proc_number - 1;	// all processes except self and parent must reply
-	do {
-		res = receive_any (io, &msg);
-		if (res < 0) return 3;
-		set_actual_time(msg.s_header.s_local_time);
-		increase_time();
+    int repliers_count = io->proc_number - 1;
 
-		switch (msg.s_header.s_type) {
-			// add request to process queue and reply sender
-			case CS_REQUEST: 
-				// TODO: check proc_id: mb its necessary to store last_msg_pid?..
-				enqueue(res, msg.s_header.s_local_time, queue);
-				increase_time();
-				msg.s_header.s_type = CS_REPLY;
+    // wait for all processes reply or for this process request becoming first in cs queue
+    while (repliers_count != 0 || (io->proc_queue->head != NULL && io->proc_queue->head->proc_id != io->proc_id)) {
+        while ((last_sender_id = receive_any((void*)self, &msg)) < 0);
+        set_actual_time(msg.s_header.s_local_time);
+
+        switch (msg.s_header.s_type) {
+            case CS_REQUEST:
+                printf("%d: process %d got request from %d\n", get_lamport_time(), io->proc_id, last_sender_id);
+                push_queue (io->proc_queue, last_sender_id, msg.s_header.s_local_time);
+                increase_time();
+                msg.s_header.s_type = CS_REPLY;
                 msg.s_header.s_local_time = get_lamport_time();
-                if (send(io, res, &msg) != 0)
-                	return 4;
-				break;
+                send(io, last_sender_id, &msg);
+                break;
 
-			// received reply from process => decrement counter
-			case CS_REPLY:
-				repliers_count -= 1;
-				break;
+            case CS_REPLY:
+                printf("%d: process %d got reply from %d\n", get_lamport_time(), io->proc_id, last_sender_id);
+                repliers_count -= 1;
+                break;
 
-			case CS_RELEASE:
-				free(dequeue(queue));
-				break;
+            case CS_RELEASE:
+                printf("%d: process %d got release from %d\n", get_lamport_time(), io->proc_id, last_sender_id);
+                Node* node = pop_queue (io->proc_queue);
+                free(node);
+                break;
 
-			case DONE:
-				io->completed_proc_counter += 1;
-				break;
+            case DONE:
+                printf("%d: process %d got DONE from %d\n", get_lamport_time(), io->proc_id, last_sender_id);
+                io->working_proc_number -= 1;
+                break;
 
-			default:
-				break;	
-		}
-	} while (queue->head->proc_id != io->proc_id || repliers_count > 0);
-	
-	return 0;
+            default:
+                break;
+        }
+    }
+    
+    return 0;
 }
 
 int release_cs(const void * self) {
-	if (self == NULL) return 1;
+    if (self == NULL) return 1;
 
-	IO* io = (IO*) self;
-	Message msg;
-	msg.s_header = (MessageHeader) {
-		.s_magic = MESSAGE_MAGIC,
-		.s_type = CS_RELEASE,
-		.s_local_time = get_lamport_time(),
-		.s_payload_len = 0
-	};
+    IO* io = (IO*)self;
+    if (io == NULL) return 2;
 
-	increase_time();
-	if (send_multicast (io, &msg) != 0)
-		return 1;
+    // remove first request from queue
+    free (pop_queue(io->proc_queue));
+    
+    Message msg;
+    msg.s_header = (MessageHeader) {
+        .s_magic = MESSAGE_MAGIC,
+        .s_type  = CS_RELEASE,
+        .s_local_time = get_lamport_time(),
+        .s_payload_len = 0
+    };
 
-	return 0;
+    increase_time();
+    send_multicast((void*)self, &msg);
+
+	return 0;	
 }

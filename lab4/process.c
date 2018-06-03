@@ -1,113 +1,64 @@
-#define _GNU_SOURCE
-#include <unistd.h>
 #include <string.h>
-
-#include "io.h"
-#include "pa2345.h"
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include "process.h"
-#include "main.h"
+#include "ipc.h"
+#include "io.h"
 #include "util.h"
-
-// all child process work including sync and useful work
-int child_process(IO* io, local_id proc_id) {
-	// set IO struct for the process
-	IO this_process = {
-		.proc_id = proc_id,
-		.proc_number = io->proc_number,
-		.channels = io->channels,
-		.events_log_stream = io->events_log_stream,
-		.pipes_log_stream = io->pipes_log_stream,
-		.completed_proc_counter = io->completed_proc_counter,
-		.is_mutexl = io->is_mutexl
-	};
-	
-	increase_time();
-	// set for messages and sync
-	char payload[MAX_PAYLOAD_LEN];
-	int payload_len = sprintf(payload, log_started_fmt, get_lamport_time(),
-							  proc_id, getpid(), getppid(),
-							  0);
-	MessageType type = STARTED;
-	timestamp_t t = 0; // used only for synchronization
-
-	// sync STARTED
-	fputs(payload, this_process.events_log_stream);
-	synchronize_with_others(payload_len, type, t, payload, &this_process);
-	fprintf(this_process.events_log_stream, log_received_all_started_fmt,
-			get_lamport_time(), proc_id);
-
-	// DO WORK
-	do_child_work(&this_process);
-
-	// DONE
-	payload_len = sprintf(payload, log_done_fmt, get_lamport_time(), proc_id, 0);
-	fputs(payload, this_process.events_log_stream);
-	// fclose(this_process.events_log_stream);
-	// fclose(this_process.pipes_log_stream);
-	increase_time();
-	type = DONE;
-
-	// sync DONE
-	Message msg;
-	msg.s_header = (MessageHeader) {
-		.s_magic = MESSAGE_MAGIC,
-		.s_payload_len = strlen(msg.s_payload),
-		.s_type = DONE,
-		.s_local_time = get_lamport_time()
-	};	
-
-	int rc = send_multicast(&this_process, &msg);
-	if( rc < 0 ){
-		return 1;
-	}
-
-	while (this_process.completed_proc_counter < this_process.proc_number - 1){
-		rc = receive_any(&this_process, &msg);
-		if( rc != 0 ) return 1;
-		set_actual_time(msg.s_header.s_local_time);
-		increase_time();
-		if( msg.s_header.s_type == DONE ) this_process.completed_proc_counter++;
-	}
-	fprintf(this_process.events_log_stream, log_received_all_done_fmt,
-		get_lamport_time(), proc_id);
-	
-	return 0;
-}
-
-int synchronize_with_others(
-	uint16_t payload_len,
-	MessageType type,
-	timestamp_t local_time,
-	char* payload,
-	IO* proc)
-{
-	// fullfill message
-	Message msg;
-	msg.s_header = (MessageHeader) {
-		.s_magic = MESSAGE_MAGIC,
-		.s_payload_len = payload_len,
-		.s_type = type,
-		.s_local_time = local_time
-	};
-	strncpy(msg.s_payload, payload, payload_len);
-
-	send_multicast((void*)proc, (const Message *)&msg);
-	// wait for messages from others
-	// it's kinda "stub" which will prevent you to move on
-	for (size_t i = 1; i <= proc->proc_number; i++)
-		if (i == proc->proc_id)
-			continue;
-		else
-			while (receive((void*)proc, i, &msg) != 0);
-	return 0;
-}
+#include "main.h"
+#include "proc_queue.h"
 
 #define BUFF_SIZE 4096
-int do_child_work(IO* io)
-{
-	if (io->is_mutexl)
-		request_cs(io);
 
+int wait_all_messages (IO* io, MessageType type) {
+	if (io == NULL) return 1;
+	Message msg = { {0} };
+
+	int proc_counter = io->proc_number;
+	while (proc_counter) {
+        while(receive_any((void*)io, &msg) < 0);
+        if (type == msg.s_header.s_type) {
+            proc_counter--;
+            set_actual_time(msg.s_header.s_local_time);
+        }
+    }
+
+    return 0;
+}
+
+void syncronize_with_others (IO* io, MessageType type) {
+	if (io == NULL) return;
+
+	Message msg;
+    increase_time();
+
+    // send message to all processes
+    msg.s_header = (MessageHeader) {
+            .s_magic       = MESSAGE_MAGIC,
+            .s_payload_len = 0,
+            .s_type        = type,
+            .s_local_time  = get_lamport_time()
+    };
+    send_multicast((void*)io, &msg);
+
+    // wait reply from all processes
+    int proc_counter = io->working_proc_number - 1;
+    while (proc_counter) {
+        while(receive_any((void*)io, &msg) < 0);
+        set_actual_time(msg.s_header.s_local_time);
+        if (type == msg.s_header.s_type) {
+            proc_counter--;
+        }
+    }
+}
+
+int child_work(IO* io) {
+	if (io == NULL) return 1;
+
+	if (io->is_mutexl) request_cs(io);
+
+    // do "useful" work
 	char buff[BUFF_SIZE];
 	int n = io->proc_id * 5;
 	for (int i = 1; i <= n; i++ ) {
@@ -115,8 +66,70 @@ int do_child_work(IO* io)
 		print(buff);
 	}
 
-	if (io->is_mutexl)
-		release_cs(io);
+	if (io->is_mutexl) release_cs(io);
 
 	return 0;
 }
+
+int child_process(IO* io, local_id proc_id) {
+	if (io == NULL) return 1;
+
+    char payload[MAX_PAYLOAD_LEN];
+    size_t len;
+	printf("Started child process with id %d \n", proc_id);
+
+	// create child process IO 
+    Node* queue;
+    create_queue(&queue);
+	IO this_process = {
+		.proc_id = proc_id,
+		.proc_number = io->proc_number,
+		.channels = io->channels,
+		.events_log_stream = io->events_log_stream,
+		.pipes_log_stream = io->pipes_log_stream,		
+		.working_proc_number = io->proc_number,
+		.is_mutexl = io->is_mutexl,
+        .proc_queue = queue
+    };    
+
+	// close non related pipes
+	close_non_related_fd(&this_process, proc_id);
+
+	len = sprintf(payload, log_started_fmt, get_lamport_time(), proc_id, getpid(), getppid(), 0);
+    fputs(payload, this_process.events_log_stream); 
+
+	// send STARTED msg to others, receive reply 
+    syncronize_with_others(&this_process, STARTED);
+    fprintf(this_process.events_log_stream, log_received_all_started_fmt, get_lamport_time(), proc_id);
+
+	// do child work
+    child_work(&this_process);
+
+	// send DONE msg to others, receive all DONE msgs, count completed processes
+	len = sprintf(payload, log_done_fmt, get_lamport_time(), proc_id, 0);
+    fputs(payload, this_process.events_log_stream);
+    
+    syncronize_with_others(&this_process, DONE);
+    fprintf(this_process.events_log_stream, log_received_all_done_fmt, get_lamport_time(), proc_id);
+
+    return 0;
+}
+
+int parent_process(IO* io) {	
+	close_non_related_fd(io, PARENT_ID);
+
+	// wait children processes
+    io->proc_id = PARENT_ID;
+    wait_all_messages(io, STARTED);
+    fprintf(io->events_log_stream, log_received_all_started_fmt, get_lamport_time(), PARENT_ID);
+    wait_all_messages(io, DONE);
+    fprintf(io->events_log_stream, log_received_all_done_fmt, get_lamport_time(), PARENT_ID);
+
+    while(wait(NULL) > 0);
+
+    fclose(io->pipes_log_stream);
+    fclose(io->events_log_stream);
+
+    return 0;
+}
+

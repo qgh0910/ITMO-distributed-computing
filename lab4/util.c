@@ -9,7 +9,6 @@
 #include "banking.h"
 
 // the func is used to init all descriptors of pipes.
-// check if it is "useful" to pass arg
 int create_pipes(IO* io) {
 	size_t total_proc_count = io->proc_number + 1;
 
@@ -47,11 +46,11 @@ int create_pipes(IO* io) {
 	return 0;
 }
 
-
 int get_options (int argc, char* argv[], int *is_mutexl) {
 	if (argc < 2)
 		return -1;
 
+	*is_mutexl = 0;
 	struct option long_options[] = {
 		{"mutexl", no_argument, (int*)is_mutexl, 1},
 		{0, 0, 0, 0}
@@ -59,7 +58,7 @@ int get_options (int argc, char* argv[], int *is_mutexl) {
 
 	int option = -1;
 	int proc_number = -1;
-	// TODO: check if works with "... < -1"
+	
 	while ((option = getopt_long (argc, argv, "p:", long_options, NULL))!= -1) {
 		switch (option) {
 			case -1:
@@ -78,7 +77,6 @@ int get_options (int argc, char* argv[], int *is_mutexl) {
 
 	return proc_number;	
 }
-
 
 void close_non_related_fd(IO* io, local_id id) {
 	size_t total_proc_count = io->proc_number + 1;
@@ -110,7 +108,6 @@ void close_non_related_fd(IO* io, local_id id) {
 		"====| PROC %d ENDED UP CLOSE UNRELATED PIPES!\n", id);
 }
 
-
 // get required channel from channels table to perform data transmition from src to dest
 ChannelHandle* get_channel_handle (IO* io, local_id src_id, local_id dest_id) {
 	if (io == NULL)
@@ -122,18 +119,3 @@ ChannelHandle* get_channel_handle (IO* io, local_id src_id, local_id dest_id) {
 		return &io->channels [src_id * total_proc_count + dest_id];
 	}
 }
-
-Message get_empty_msg() {
-	Message msg = (Message) {
-		.s_header = (MessageHeader) {
-			.s_magic = MESSAGE_MAGIC,
-			.s_payload_len = 0,
-			.s_type = 0,
-			.s_local_time = get_lamport_time()
-		},
-		.s_payload = {(char)NULL}
-	};
-	return msg;
-}
-
-

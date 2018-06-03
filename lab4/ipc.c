@@ -75,8 +75,9 @@ int receive(void * self, local_id from, Message * msg) {
 		received_buff + header_read_len,  	// we write to single buf
 		payload_len							// size of payload
 	);
-	if (paload_read_len >= 0)
+	if (paload_read_len >= 0) {
 		memcpy (msg, received_buff, paload_read_len + header_read_len);
+	}
 
 	fprintf(io->pipes_log_stream, "received from %d in %d with type %d\n",
 		from, io->proc_id, msg_header->s_type);
@@ -84,6 +85,7 @@ int receive(void * self, local_id from, Message * msg) {
 }
 
 // returns process id from which message came from
+// or negative value if error
 int receive_any(void * self, Message * msg) {
 	if ((self == NULL) || (msg == NULL))
 		return -1;
@@ -92,8 +94,9 @@ int receive_any(void * self, Message * msg) {
 	for (local_id i = 0; i <= io->proc_number; i++) {
 		int ret = receive(self, i, msg);
 		// printf("--receive_any (%d) ret code = %d\n", io->proc_id, ret);
-		if (ret == 0)
+		if (ret == 0) {
 			return i;
+		}
 	}
 	return -2;
 }

@@ -1,23 +1,22 @@
-#include <string.h>
 #include <stdlib.h>
 #include "proc_queue.h"
 
-int init_proc_queue (QueueNode **queue) {
+int create_queue(Node **queue){
 	*queue = malloc (sizeof **queue);
 	if (*queue == NULL)
 		return 1;
 	else
-		return 0;	
+		return 0;
 }
 
-int enqueue (local_id pid, timestamp_t time, QueueNode *queue) {
+int push_queue (Node *queue, local_id proc_id, timestamp_t time){
 	if (queue == NULL) return 1;
 
-	QueueNode* new_node;
-	new_node = malloc (sizeof new_node);
+	Node* new_node;
+	new_node = malloc (sizeof *new_node);
 	if (new_node == NULL) return 2;
 
-	new_node->proc_id = pid;
+	new_node->proc_id = proc_id;
 	new_node->time = time;
 	new_node->next = NULL;
 
@@ -28,8 +27,8 @@ int enqueue (local_id pid, timestamp_t time, QueueNode *queue) {
 		return 0;
 	}
 	// if queue is not empty => push to queue
-	QueueNode* curr_node = queue->head;
-	QueueNode* prev_node = NULL;
+	Node* curr_node = queue->head;
+	Node* prev_node = NULL;
 
 	do {
 		// check requests order comparing by time and proc_id (if times are equal)
@@ -47,16 +46,17 @@ int enqueue (local_id pid, timestamp_t time, QueueNode *queue) {
 		}
 	} while (curr_node != NULL); 
 
+	// if all requests time is less than new_node time => put it in queue tail
 	queue->tail->next = new_node;
 	queue->tail = new_node;
 	return 0;
 }
 
-QueueNode* dequeue (QueueNode *queue) {
+Node* pop_queue (Node *queue){
 	if (queue == NULL || queue->head == NULL)
 		return NULL;
 
-	QueueNode* result = queue->head;
+	Node* result = queue->head;
 	if (queue->head == queue->tail) {
 		queue->tail = queue->head = NULL;		
 	} else {
@@ -66,17 +66,16 @@ QueueNode* dequeue (QueueNode *queue) {
 	return result;
 }
 
-int clear_queue (QueueNode *queue) {
+int destroy_queue (Node *queue){
 	if (queue == NULL) return 1;
 
-	QueueNode* curr_node = queue->head;
-	QueueNode* tmp_node;
+	Node* curr_node = queue->head;
+	Node* tmp_node;
 	while (curr_node) {
 		tmp_node = curr_node->next;
 		free(curr_node);
 		curr_node = tmp_node;		
 	}
-
 	queue->head = queue->tail = NULL;
 	free(queue);
 

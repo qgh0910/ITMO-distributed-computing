@@ -10,40 +10,20 @@
 #include "logging.h"
 #include "process.h"
 
+// implement lamport time functions
 static timestamp_t process_time = 0;
 
-// implement lamport time functions
-timestamp_t get_lamport_time() {
-	return process_time;
-}
-void set_actual_time(timestamp_t new_time) {
-	process_time = new_time > process_time ? new_time : process_time;
-}
-void increase_time() {
-	process_time += 1;
-}
+timestamp_t get_lamport_time() { return process_time; }
+void increase_time() {	process_time += 1; }
+void set_actual_time(timestamp_t new_time) { process_time = new_time > process_time ? new_time : process_time; }
 
-void wait_messages_from_all(IO* io, MessageType type) {
-	for (size_t i = 1; i <= io->proc_number; i++) {
-		Message msg = {{0}};
-		while(1) {
-			int res = receive((void*)io, i, &msg);
-			if (res != 0)
-				continue;			
-			if (msg.s_header.s_type == type)
-				break;
-		}
-		set_actual_time(msg.s_header.s_local_time);
-		increase_time();
-	}
-}
-
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
 	IO io;
 	int is_mutexl;
 	int proc_number;
 
+	// parse options
 	proc_number = get_options (argc, argv, &is_mutexl);
 	if (proc_number == -1) return 2;
 
@@ -52,47 +32,33 @@ int main(int argc, char* argv[])
 		.proc_number = proc_number,
 		.is_mutexl = is_mutexl
 	};
-	open_log_streams (&io);
+
+	// open logs, create pipes
+	if (open_log_streams (&io) < 0) {
+		perror("unsuccessful open logs");
+		return -2;
+	}
 	if (create_pipes(&io) < 0) {
-		perror("create pipes fucked up");
+		perror("unsuccessful create pipes");
 		return -1;
 	}
-	for (size_t i = 1; i <= io.proc_number; i++) {
-		// needs to avoid repetition
+
+	// fork children, start children processes
+	for (int i = 1; i <= io.proc_number; i++) {		
 		fflush(io.events_log_stream);
-		fflush(io.pipes_log_stream);
+		fflush(io.pipes_log_stream);	
 
-		pid_t pid = fork();
-		if (pid < 0)
-			exit(EXIT_FAILURE);
-		else if (pid == 0) {  // if a child
-			// as process(!!!) starts we need to close all
-			// non-related file descriptors
-			close_non_related_fd(&io, (local_id)i);
-			// printf("init_balances[%zu] = %d\n", i, init_balances[i]);
-			int child_ret = child_process(&io, (local_id)i);
-			exit(child_ret);  // end up child process
-		}
-	}
+        pid_t pid = fork();
+        if (0 > pid) {
+            exit(EXIT_FAILURE);
+        } else if (0 == pid) {            
+            int ret = child_process(&io, i);
+            exit(ret);
+        }
+    }
 
-	// sync START
-	close_non_related_fd(&io, (local_id)PARENT_ID);	
-	Message msg = get_empty_msg();
-
-	wait_messages_from_all(&io, STARTED);
-
-	// count completed children	
-	while (io.completed_proc_counter < io.proc_number) {
-		if (receive_any(&io, &msg) < 0) return 1;
-		set_actual_time(msg.s_header.s_local_time);
-		increase_time();
-
-		if( msg.s_header.s_type == DONE ) io.completed_proc_counter++;
-	}
-
-	// wait for processes end
-	while(wait(NULL) > 0);  
-	close_log_streams(&io);
+	// do parent process, close logs, pipes
+    parent_process(&io);
 
 	return 0;
 }
